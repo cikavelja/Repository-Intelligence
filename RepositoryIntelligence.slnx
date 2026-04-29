@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RepositoryIntelligence.Application/RepositoryIntelligence.Application.csproj" />
+    <Project Path="src/RepositoryIntelligence.ConsoleApp/RepositoryIntelligence.ConsoleApp.csproj" />
+    <Project Path="src/RepositoryIntelligence.Domain/RepositoryIntelligence.Domain.csproj" />
+    <Project Path="src/RepositoryIntelligence.Infrastructure/RepositoryIntelligence.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RepositoryIntelligence.Tests/RepositoryIntelligence.Tests.csproj" />
+  </Folder>
+</Solution>
