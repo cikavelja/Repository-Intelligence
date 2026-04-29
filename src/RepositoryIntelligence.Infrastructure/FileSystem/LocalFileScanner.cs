@@ -46,10 +46,7 @@ public sealed class LocalFileScanner : IFileScanner
             foreach (var file in files)
             {
                 if (_pathFilter.IsSupportedFile(file) && !_pathFilter.ShouldIgnoreFile(file))
-                {
                     yield return file;
-                    await Task.Yield();
-                }
             }
         }
     }

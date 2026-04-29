@@ -140,11 +140,5 @@ public sealed class IssueAnalyzer : IIssueAnalyzer
         return "Review this file for logic related to the described issue.";
     }
 
-    private static HashSet<string> Tokenize(string text) =>
-        new(
-            text.ToLowerInvariant()
-                .Split([' ', '\t', '\n', '\r', '.', ',', '(', ')', '{', '}', '[', ']', '<', '>', '/', '\\', '"', '\'', ';', ':', '-', '_'],
-                    StringSplitOptions.RemoveEmptyEntries)
-                .Where(t => t.Length >= 2),
-            StringComparer.OrdinalIgnoreCase);
+    private static HashSet<string> Tokenize(string text) => TextTokenizer.Tokenize(text);
 }

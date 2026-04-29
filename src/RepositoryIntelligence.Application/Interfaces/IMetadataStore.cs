@@ -17,6 +17,10 @@ public interface IMetadataStore
     Task<IReadOnlyList<CodeChunk>> GetChunksByFilePathAsync(string repositoryName, string branchName, string filePath, CancellationToken cancellationToken = default);
     Task DeleteChunksByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default);
     Task<CodeChunk?> GetChunkByIdAsync(Guid chunkId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CodeChunk>> GetChunksByIdsAsync(IReadOnlyList<Guid> chunkIds, CancellationToken cancellationToken = default);
+
+    // Documents (batch)
+    Task<IReadOnlyList<RepositoryDocument>> GetDocumentsByPathsAsync(string repositoryName, string branchName, IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default);
 
     // Symbols
     Task AddSymbolsAsync(IReadOnlyList<CodeSymbol> symbols, CancellationToken cancellationToken = default);

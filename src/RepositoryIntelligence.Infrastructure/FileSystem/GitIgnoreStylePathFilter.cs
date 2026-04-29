@@ -43,7 +43,7 @@ public sealed class GitIgnoreStylePathFilter : IPathFilter
             if (info.Exists && info.Length > MaxFileSizeBytes)
                 return true;
         }
-        catch
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // ignore stat errors
         }

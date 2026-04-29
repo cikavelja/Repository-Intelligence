@@ -14,7 +14,7 @@ public sealed class LocalHashEmbeddingService : IEmbeddingService
 
     public float[] GenerateEmbedding(string text)
     {
-        var tokens = Tokenize(text);
+        var tokens = TextTokenizer.TokenizeEnumerable(text);
         var vector = new float[Dimensions];
 
         foreach (var token in tokens)
@@ -38,14 +38,5 @@ public sealed class LocalHashEmbeddingService : IEmbeddingService
         }
 
         return vector;
-    }
-
-    private static IEnumerable<string> Tokenize(string text)
-    {
-        // Lowercase, split on non-alphanumeric, remove empties
-        return text
-            .ToLowerInvariant()
-            .Split([' ', '\t', '\n', '\r', '.', ',', '(', ')', '{', '}', '[', ']', '<', '>', '/', '\\', '"', '\'', ';', ':', '-', '_'], StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length >= 2);
     }
 }

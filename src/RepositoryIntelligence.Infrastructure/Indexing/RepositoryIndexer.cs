@@ -9,7 +9,6 @@ namespace RepositoryIntelligence.Infrastructure.Indexing;
 public sealed class RepositoryIndexer : IRepositoryIndexer
 {
     private readonly IFileScanner _fileScanner;
-    private readonly IPathFilter _pathFilter;
     private readonly IEnumerable<ICodeParser> _parsers;
     private readonly IChunkingService _chunkingService;
     private readonly IEmbeddingService _embeddingService;
@@ -18,7 +17,6 @@ public sealed class RepositoryIndexer : IRepositoryIndexer
 
     public RepositoryIndexer(
         IFileScanner fileScanner,
-        IPathFilter pathFilter,
         IEnumerable<ICodeParser> parsers,
         IChunkingService chunkingService,
         IEmbeddingService embeddingService,
@@ -26,7 +24,6 @@ public sealed class RepositoryIndexer : IRepositoryIndexer
         IMetadataStore metadataStore)
     {
         _fileScanner = fileScanner;
-        _pathFilter = pathFilter;
         _parsers = parsers;
         _chunkingService = chunkingService;
         _embeddingService = embeddingService;
@@ -40,12 +37,22 @@ public sealed class RepositoryIndexer : IRepositoryIndexer
     {
         var start = DateTime.UtcNow;
 
+        if (string.IsNullOrWhiteSpace(command.RepositoryPath))
+            throw new ArgumentException("RepositoryPath cannot be empty.", nameof(command));
+        if (!Directory.Exists(command.RepositoryPath))
+            throw new ArgumentException($"Repository path does not exist: {command.RepositoryPath}", nameof(command));
+
         await _metadataStore.InitializeAsync(cancellationToken);
 
         if (command.Mode == IndexingMode.Full)
         {
             await _metadataStore.ClearRepositoryAsync(command.RepositoryName, command.BranchName, cancellationToken);
-            // In-memory vector store is already clean relative to repository after clear
+        }
+        else
+        {
+            // Reload embeddings into vector store to recover from process restarts.
+            // Embeddings are deterministic so they can safely be regenerated from stored text.
+            await ReloadEmbeddingsAsync(command, cancellationToken);
         }
 
         var summary = new IndexingSummary();
@@ -206,6 +213,35 @@ public sealed class RepositoryIndexer : IRepositoryIndexer
         }
 
         return normalizedChunks.Count;
+    }
+
+    /// <summary>
+    /// Regenerates embeddings for all existing non-deleted chunks and upserts them into the
+    /// vector store. Called at the start of every incremental index to recover after a process
+    /// restart, where the in-memory vector store would otherwise be empty.
+    /// </summary>
+    private async Task ReloadEmbeddingsAsync(IndexRepositoryCommand command, CancellationToken cancellationToken)
+    {
+        var docs = await _metadataStore.GetAllDocumentsAsync(command.RepositoryName, command.BranchName, cancellationToken);
+        foreach (var doc in docs.Where(d => !d.IsDeleted))
+        {
+            var chunks = await _metadataStore.GetChunksByDocumentIdAsync(doc.Id, cancellationToken);
+            foreach (var chunk in chunks)
+            {
+                var embedding = _embeddingService.GenerateEmbedding(chunk.Text);
+                await _vectorSearchService.UpsertAsync(chunk.EmbeddingId, embedding,
+                    new Dictionary<string, string>
+                    {
+                        ["repositoryName"] = command.RepositoryName,
+                        ["branchName"] = command.BranchName,
+                        ["filePath"] = chunk.FilePath,
+                        ["chunkId"] = chunk.Id.ToString(),
+                        ["repositoryDocumentId"] = doc.Id.ToString(),
+                        ["symbolName"] = chunk.SymbolName,
+                        ["language"] = chunk.Language
+                    }, cancellationToken);
+            }
+        }
     }
 
     private static string ComputeHash(string content)

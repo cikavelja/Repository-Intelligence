@@ -15,10 +15,3 @@ public interface IVectorSearchService
         int topK = 20,
         CancellationToken cancellationToken = default);
 }
-
-public sealed class VectorSearchHit
-{
-    public string Id { get; set; } = "";
-    public double Score { get; set; }
-    public IDictionary<string, string> Metadata { get; set; } = new Dictionary<string, string>();
-}

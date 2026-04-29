@@ -27,7 +27,6 @@ public sealed class RepositoryIndexerTests : IDisposable
         var parser = new RoslynCodeParser(chunker);
         _indexer = new RepositoryIndexer(
             new LocalFileScanner(new GitIgnoreStylePathFilter()),
-            new GitIgnoreStylePathFilter(),
             [parser],
             chunker,
             new LocalHashEmbeddingService(),

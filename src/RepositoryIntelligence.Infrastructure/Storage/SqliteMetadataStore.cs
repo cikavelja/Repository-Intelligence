@@ -15,10 +15,10 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
         _connectionString = $"Data Source={databasePath}";
     }
 
-    private async Task<SqliteConnection> OpenConnectionAsync()
+    private async Task<SqliteConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
     {
         var conn = new SqliteConnection(_connectionString);
-        await conn.OpenAsync();
+        await conn.OpenAsync(cancellationToken);
         await conn.ExecuteAsync("PRAGMA journal_mode=WAL;");
         await conn.ExecuteAsync("PRAGMA foreign_keys=ON;");
         return conn;
@@ -26,7 +26,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         await conn.ExecuteAsync("""
             CREATE TABLE IF NOT EXISTS RepositoryDocuments (
                 Id TEXT PRIMARY KEY,
@@ -95,7 +95,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task UpsertDocumentAsync(RepositoryDocument doc, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         await conn.ExecuteAsync("""
             INSERT INTO RepositoryDocuments
                 (Id, RepositoryName, BranchName, FilePath, AbsolutePath, Language, ContentHash,
@@ -133,8 +133,8 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task<RepositoryDocument?> GetDocumentByPathAsync(string repositoryName, string branchName, string filePath, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
-        var row = await conn.QuerySingleOrDefaultAsync(
+        using var conn = await OpenConnectionAsync(cancellationToken);
+        var row = await conn.QuerySingleOrDefaultAsync<DocumentRow>(
             "SELECT * FROM RepositoryDocuments WHERE RepositoryName=@rn AND BranchName=@bn AND FilePath=@fp",
             new { rn = repositoryName, bn = branchName, fp = filePath });
         return row is null ? null : MapDocument(row);
@@ -142,16 +142,16 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task<IReadOnlyList<RepositoryDocument>> GetAllDocumentsAsync(string repositoryName, string branchName, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
-        var rows = await conn.QueryAsync(
+        using var conn = await OpenConnectionAsync(cancellationToken);
+        var rows = await conn.QueryAsync<DocumentRow>(
             "SELECT * FROM RepositoryDocuments WHERE RepositoryName=@rn AND BranchName=@bn",
             new { rn = repositoryName, bn = branchName });
-        return rows.Select(r => (RepositoryDocument)MapDocument(r)).ToList();
+        return rows.Select(MapDocument).ToList();
     }
 
     public async Task MarkDocumentDeletedAsync(Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         await conn.ExecuteAsync(
             "UPDATE RepositoryDocuments SET IsDeleted=1, DeletedAtUtc=@now WHERE Id=@id",
             new { id = documentId.ToString(), now = DateTime.UtcNow.ToString("O") });
@@ -159,7 +159,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task DeleteDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         await conn.ExecuteAsync("DELETE FROM RepositoryDocuments WHERE Id=@id", new { id = documentId.ToString() });
     }
 
@@ -168,7 +168,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
     public async Task AddChunksAsync(IReadOnlyList<CodeChunk> chunks, CancellationToken cancellationToken = default)
     {
         if (chunks.Count == 0) return;
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         using var tx = conn.BeginTransaction();
         foreach (var c in chunks)
         {
@@ -202,31 +202,52 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task<IReadOnlyList<CodeChunk>> GetChunksByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
-        var rows = await conn.QueryAsync("SELECT * FROM CodeChunks WHERE RepositoryDocumentId=@id", new { id = documentId.ToString() });
-        return rows.Select(r => (CodeChunk)MapChunk(r)).ToList();
+        using var conn = await OpenConnectionAsync(cancellationToken);
+        var rows = await conn.QueryAsync<ChunkRow>("SELECT * FROM CodeChunks WHERE RepositoryDocumentId=@id", new { id = documentId.ToString() });
+        return rows.Select(MapChunk).ToList();
     }
 
     public async Task<IReadOnlyList<CodeChunk>> GetChunksByFilePathAsync(string repositoryName, string branchName, string filePath, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
-        var rows = await conn.QueryAsync(
+        using var conn = await OpenConnectionAsync(cancellationToken);
+        var rows = await conn.QueryAsync<ChunkRow>(
             "SELECT * FROM CodeChunks WHERE RepositoryName=@rn AND BranchName=@bn AND FilePath=@fp",
             new { rn = repositoryName, bn = branchName, fp = filePath });
-        return rows.Select(r => (CodeChunk)MapChunk(r)).ToList();
+        return rows.Select(MapChunk).ToList();
     }
 
     public async Task DeleteChunksByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         await conn.ExecuteAsync("DELETE FROM CodeChunks WHERE RepositoryDocumentId=@id", new { id = documentId.ToString() });
     }
 
     public async Task<CodeChunk?> GetChunkByIdAsync(Guid chunkId, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
-        var row = await conn.QuerySingleOrDefaultAsync("SELECT * FROM CodeChunks WHERE Id=@id", new { id = chunkId.ToString() });
+        using var conn = await OpenConnectionAsync(cancellationToken);
+        var row = await conn.QuerySingleOrDefaultAsync<ChunkRow>("SELECT * FROM CodeChunks WHERE Id=@id", new { id = chunkId.ToString() });
         return row is null ? null : MapChunk(row);
+    }
+
+    public async Task<IReadOnlyList<CodeChunk>> GetChunksByIdsAsync(IReadOnlyList<Guid> chunkIds, CancellationToken cancellationToken = default)
+    {
+        if (chunkIds.Count == 0) return [];
+        using var conn = await OpenConnectionAsync(cancellationToken);
+        var idStrings = chunkIds.Select(id => id.ToString()).ToList();
+        var rows = await conn.QueryAsync<ChunkRow>("SELECT * FROM CodeChunks WHERE Id IN @ids", new { ids = idStrings });
+        return rows.Select(MapChunk).ToList();
+    }
+
+    public async Task<IReadOnlyList<RepositoryDocument>> GetDocumentsByPathsAsync(
+        string repositoryName, string branchName, IReadOnlyList<string> filePaths,
+        CancellationToken cancellationToken = default)
+    {
+        if (filePaths.Count == 0) return [];
+        using var conn = await OpenConnectionAsync(cancellationToken);
+        var rows = await conn.QueryAsync<DocumentRow>(
+            "SELECT * FROM RepositoryDocuments WHERE RepositoryName=@rn AND BranchName=@bn AND FilePath IN @paths",
+            new { rn = repositoryName, bn = branchName, paths = (IEnumerable<string>)filePaths });
+        return rows.Select(MapDocument).ToList();
     }
 
     // ---- Symbols ----
@@ -234,7 +255,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
     public async Task AddSymbolsAsync(IReadOnlyList<CodeSymbol> symbols, CancellationToken cancellationToken = default)
     {
         if (symbols.Count == 0) return;
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         using var tx = conn.BeginTransaction();
         foreach (var s in symbols)
         {
@@ -265,7 +286,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task DeleteSymbolsByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         await conn.ExecuteAsync("DELETE FROM CodeSymbols WHERE RepositoryDocumentId=@id", new { id = documentId.ToString() });
     }
 
@@ -274,7 +295,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
     public async Task AddDependenciesAsync(IReadOnlyList<CodeDependency> dependencies, CancellationToken cancellationToken = default)
     {
         if (dependencies.Count == 0) return;
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         using var tx = conn.BeginTransaction();
         foreach (var d in dependencies)
         {
@@ -303,7 +324,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task DeleteDependenciesBySourceFileAsync(string repositoryName, string branchName, string filePath, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         await conn.ExecuteAsync(
             "DELETE FROM CodeDependencies WHERE RepositoryName=@rn AND BranchName=@bn AND SourceFilePath=@fp",
             new { rn = repositoryName, bn = branchName, fp = filePath });
@@ -313,7 +334,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task ClearRepositoryAsync(string repositoryName, string branchName, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         using var tx = conn.BeginTransaction();
         await conn.ExecuteAsync("DELETE FROM CodeDependencies WHERE RepositoryName=@rn AND BranchName=@bn", new { rn = repositoryName, bn = branchName }, tx);
         await conn.ExecuteAsync("DELETE FROM CodeSymbols WHERE RepositoryName=@rn AND BranchName=@bn", new { rn = repositoryName, bn = branchName }, tx);
@@ -324,7 +345,7 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
 
     public async Task<IndexingSummary> GetIndexingSummaryAsync(string repositoryName, string branchName, CancellationToken cancellationToken = default)
     {
-        using var conn = await OpenConnectionAsync();
+        using var conn = await OpenConnectionAsync(cancellationToken);
         var totalDocs = await conn.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM RepositoryDocuments WHERE RepositoryName=@rn AND BranchName=@bn",
             new { rn = repositoryName, bn = branchName });
@@ -342,38 +363,54 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
         };
     }
 
-    public void Dispose() => SqliteConnection.ClearAllPools();
+    public void Dispose()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        SqliteConnection.ClearPool(conn);
+    }
+
+    // ---- Typed row DTOs (avoids dynamic/runtime binding errors) ----
+
+    private sealed record DocumentRow(
+        string Id, string RepositoryName, string BranchName, string FilePath,
+        string AbsolutePath, string Language, string ContentHash, long FileSizeBytes,
+        string LastModifiedUtc, string IndexedAtUtc, long IsDeleted, string? DeletedAtUtc);
+
+    private sealed record ChunkRow(
+        string Id, string RepositoryDocumentId, string RepositoryName, string BranchName,
+        string FilePath, string Language, long ChunkType, string SymbolName,
+        long StartLine, long EndLine, string Text, string ContentHash, string EmbeddingId);
 
     // ---- Mappers ----
 
-    private static RepositoryDocument MapDocument(dynamic r) => new()
+    private static RepositoryDocument MapDocument(DocumentRow r) => new()
     {
-        Id = Guid.Parse((string)r.Id),
+        Id = Guid.Parse(r.Id),
         RepositoryName = r.RepositoryName,
         BranchName = r.BranchName,
         FilePath = r.FilePath,
         AbsolutePath = r.AbsolutePath,
         Language = r.Language,
         ContentHash = r.ContentHash,
-        FileSizeBytes = (long)r.FileSizeBytes,
+        FileSizeBytes = r.FileSizeBytes,
         LastModifiedUtc = DateTime.Parse(r.LastModifiedUtc),
         IndexedAtUtc = DateTime.Parse(r.IndexedAtUtc),
-        IsDeleted = (long)r.IsDeleted == 1,
+        IsDeleted = r.IsDeleted == 1,
         DeletedAtUtc = r.DeletedAtUtc is null ? null : DateTime.Parse(r.DeletedAtUtc)
     };
 
-    private static CodeChunk MapChunk(dynamic r) => new()
+    private static CodeChunk MapChunk(ChunkRow r) => new()
     {
-        Id = Guid.Parse((string)r.Id),
-        RepositoryDocumentId = Guid.Parse((string)r.RepositoryDocumentId),
+        Id = Guid.Parse(r.Id),
+        RepositoryDocumentId = Guid.Parse(r.RepositoryDocumentId),
         RepositoryName = r.RepositoryName,
         BranchName = r.BranchName,
         FilePath = r.FilePath,
         Language = r.Language,
-        ChunkType = (ChunkType)(int)(long)r.ChunkType,
+        ChunkType = (ChunkType)(int)r.ChunkType,
         SymbolName = r.SymbolName,
-        StartLine = (int)(long)r.StartLine,
-        EndLine = (int)(long)r.EndLine,
+        StartLine = (int)r.StartLine,
+        EndLine = (int)r.EndLine,
         Text = r.Text,
         ContentHash = r.ContentHash,
         EmbeddingId = r.EmbeddingId
