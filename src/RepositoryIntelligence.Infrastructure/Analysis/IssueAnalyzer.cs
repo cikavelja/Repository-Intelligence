@@ -85,9 +85,6 @@ public sealed class IssueAnalyzer : IIssueAnalyzer
         int pathMatches = issueTokens.Count(t => pathTokens.Contains(t));
         double pathBoost = pathMatches > 0 ? 1.0 + (pathMatches * 0.05) : 1.0;
 
-        // Boost for test files if issue mentions testing
-        bool isTest = filePath.Contains("test", StringComparison.OrdinalIgnoreCase);
-
         return avgScore * pathBoost;
     }
 

@@ -79,14 +79,15 @@ public sealed class RepositoryIndexer : IRepositoryIndexer
                     continue;
                 }
 
-                // Updated file — remove old data first
+                // Count chunks before deleting them (count will be 0 after deletion)
+                var chunksToDelete = await _metadataStore.GetChunksByDocumentIdAsync(existingDoc.Id, cancellationToken);
+                summary.DeletedChunks += chunksToDelete.Count;
+
+                // Updated file — remove old data
                 await _metadataStore.DeleteChunksByDocumentIdAsync(existingDoc.Id, cancellationToken);
                 await _metadataStore.DeleteSymbolsByDocumentIdAsync(existingDoc.Id, cancellationToken);
                 await _metadataStore.DeleteDependenciesBySourceFileAsync(command.RepositoryName, command.BranchName, relativePath, cancellationToken);
                 await _vectorSearchService.DeleteByDocumentIdAsync(existingDoc.Id, cancellationToken);
-
-                var chunksDeleted = await _metadataStore.GetChunksByDocumentIdAsync(existingDoc.Id, cancellationToken);
-                summary.DeletedChunks += chunksDeleted.Count;
 
                 var updatedDoc = new RepositoryDocument
                 {

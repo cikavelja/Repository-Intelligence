@@ -95,8 +95,9 @@ public sealed class RoslynCodeParser : ICodeParser
                 }
             }
 
-            // Methods and constructors
-            foreach (var method in type.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            // Methods and constructors — use Members (not DescendantNodes) to avoid
+            // processing inner-type methods twice when nested types are present.
+            foreach (var method in type.Members.OfType<MethodDeclarationSyntax>())
             {
                 var (ms, me) = GetLineRange(text, method.Span);
                 var methodName = method.Identifier.Text;
@@ -137,7 +138,7 @@ public sealed class RoslynCodeParser : ICodeParser
                 }
             }
 
-            foreach (var ctor in type.DescendantNodes().OfType<ConstructorDeclarationSyntax>())
+            foreach (var ctor in type.Members.OfType<ConstructorDeclarationSyntax>())
             {
                 var (cs, ce) = GetLineRange(text, ctor.Span);
                 symbols.Add(new CodeSymbol
