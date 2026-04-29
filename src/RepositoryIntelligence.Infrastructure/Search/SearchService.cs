@@ -25,13 +25,29 @@ public sealed class SearchService : ISearchService
     {
         var queryVector = _embeddingService.GenerateEmbedding(command.Query);
         var queryTokens = TextTokenizer.Tokenize(command.Query);
+        var topK = Math.Max(command.MaxResults * 3, command.MaxResults);
 
         var vectorHits = await _vectorSearchService.SearchAsync(
             queryVector,
             command.RepositoryName,
             command.BranchName,
-            topK: command.MaxResults * 3,
+            topK,
             cancellationToken);
+
+        if (vectorHits.Count == 0)
+        {
+            var allChunks = await _metadataStore.GetAllChunksAsync(command.RepositoryName, command.BranchName, cancellationToken);
+            if (allChunks.Count > 0)
+            {
+                await HydrateVectorIndexAsync(allChunks, cancellationToken);
+                vectorHits = await _vectorSearchService.SearchAsync(
+                    queryVector,
+                    command.RepositoryName,
+                    command.BranchName,
+                    topK,
+                    cancellationToken);
+            }
+        }
 
         // Collect chunk IDs from hits
         var chunkIds = vectorHits
@@ -88,6 +104,26 @@ public sealed class SearchService : ISearchService
             .OrderByDescending(r => r.Score)
             .Take(command.MaxResults)
             .ToList();
+    }
+
+    private async Task HydrateVectorIndexAsync(IReadOnlyList<CodeChunk> chunks, CancellationToken cancellationToken)
+    {
+        foreach (var chunk in chunks)
+        {
+            var embedding = _embeddingService.GenerateEmbedding(chunk.Text);
+            var metadata = new Dictionary<string, string>
+            {
+                ["repositoryName"] = chunk.RepositoryName,
+                ["branchName"] = chunk.BranchName,
+                ["filePath"] = chunk.FilePath,
+                ["chunkId"] = chunk.Id.ToString(),
+                ["repositoryDocumentId"] = chunk.RepositoryDocumentId.ToString(),
+                ["symbolName"] = chunk.SymbolName,
+                ["language"] = chunk.Language
+            };
+
+            await _vectorSearchService.UpsertAsync(chunk.EmbeddingId, embedding, metadata, cancellationToken);
+        }
     }
 
     private static double KeywordOverlap(HashSet<string> queryTokens, HashSet<string> chunkTokens)

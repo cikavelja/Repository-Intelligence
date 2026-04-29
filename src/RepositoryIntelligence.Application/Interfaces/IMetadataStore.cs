@@ -13,6 +13,7 @@ public interface IMetadataStore
 
     // Chunks
     Task AddChunksAsync(IReadOnlyList<CodeChunk> chunks, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CodeChunk>> GetAllChunksAsync(string repositoryName, string branchName, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CodeChunk>> GetChunksByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CodeChunk>> GetChunksByFilePathAsync(string repositoryName, string branchName, string filePath, CancellationToken cancellationToken = default);
     Task DeleteChunksByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default);

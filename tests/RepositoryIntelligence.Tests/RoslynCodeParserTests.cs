@@ -89,6 +89,23 @@ public sealed class RoslynCodeParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_ExtractsPropertySymbol()
+    {
+        var code = """
+            namespace MyApp;
+            public class Order
+            {
+                public decimal TotalAmount { get; init; }
+            }
+            """;
+
+        var result = await _parser.ParseAsync("Order.cs", code, "repo", "main", Guid.NewGuid());
+
+        Assert.Contains(result.Symbols, s => s.SymbolName == "Order.TotalAmount" && s.SymbolType == SymbolType.Property);
+        Assert.Contains(result.Chunks, c => c.SymbolName == "Order.TotalAmount" && c.ChunkType == ChunkType.Property);
+    }
+
+    [Fact]
     public async Task ParseAsync_ProducesChunks()
     {
         var code = """

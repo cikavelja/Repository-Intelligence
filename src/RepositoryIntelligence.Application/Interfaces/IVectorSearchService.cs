@@ -4,6 +4,8 @@ public interface IVectorSearchService
 {
     Task UpsertAsync(string id, float[] vector, IDictionary<string, string> metadata, CancellationToken cancellationToken = default);
 
+    Task ClearRepositoryAsync(string repositoryName, string branchName, CancellationToken cancellationToken = default);
+
     Task DeleteByFilePathAsync(string repositoryName, string branchName, string filePath, CancellationToken cancellationToken = default);
 
     Task DeleteByDocumentIdAsync(Guid repositoryDocumentId, CancellationToken cancellationToken = default);

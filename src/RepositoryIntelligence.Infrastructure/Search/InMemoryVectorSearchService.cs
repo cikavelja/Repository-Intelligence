@@ -25,6 +25,18 @@ public sealed class InMemoryVectorSearchService : IVectorSearchService
         return Task.CompletedTask;
     }
 
+    public Task ClearRepositoryAsync(string repositoryName, string branchName, CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            _entries.RemoveAll(e =>
+                e.Metadata.TryGetValue("repositoryName", out var rn) && rn == repositoryName &&
+                e.Metadata.TryGetValue("branchName", out var bn) && bn == branchName);
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task DeleteByFilePathAsync(string repositoryName, string branchName, string filePath, CancellationToken cancellationToken = default)
     {
         lock (_lock)

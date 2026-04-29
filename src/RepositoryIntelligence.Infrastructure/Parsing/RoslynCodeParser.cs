@@ -157,6 +157,27 @@ public sealed class RoslynCodeParser : ICodeParser
                 chunks.Add(MakeChunk(ctor.ToString(), filePath, "csharp", repositoryName, branchName, repositoryDocumentId,
                     cs, ce, ChunkType.Constructor, $"{typeName}..ctor"));
             }
+
+            foreach (var property in type.Members.OfType<PropertyDeclarationSyntax>())
+            {
+                var (ps, pe) = GetLineRange(text, property.Span);
+                var propertyName = property.Identifier.Text;
+                symbols.Add(new CodeSymbol
+                {
+                    Id = Guid.NewGuid(),
+                    RepositoryDocumentId = repositoryDocumentId,
+                    RepositoryName = repositoryName,
+                    BranchName = branchName,
+                    FilePath = filePath,
+                    SymbolName = $"{typeName}.{propertyName}",
+                    SymbolType = SymbolType.Property,
+                    Namespace = namespaceName,
+                    StartLine = ps,
+                    EndLine = pe
+                });
+                chunks.Add(MakeChunk(property.ToString(), filePath, "csharp", repositoryName, branchName, repositoryDocumentId,
+                    ps, pe, ChunkType.Property, $"{typeName}.{propertyName}"));
+            }
         }
 
         // If no typed chunks produced, fall back to text chunking for the whole file

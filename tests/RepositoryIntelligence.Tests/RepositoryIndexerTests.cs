@@ -137,6 +137,60 @@ public sealed class RepositoryIndexerTests : IDisposable
     }
 
     [Fact]
+    public async Task Search_RehydratesVectors_FromPersistedChunksInFreshService()
+    {
+        File.WriteAllText(Path.Combine(_tempRepo, "OrderHandler.cs"), "public class OrderHandler { public void TriggerPayment() {} }");
+        await _indexer.IndexRepositoryAsync(MakeCommand(IndexingMode.Full));
+
+        var freshVectorStore = new InMemoryVectorSearchService();
+        var freshSearchService = new SearchService(new LocalHashEmbeddingService(), freshVectorStore, _store);
+
+        var results = await freshSearchService.SearchAsync(new SearchCodeCommand
+        {
+            RepositoryName = "TestRepo",
+            BranchName = "main",
+            Query = "trigger payment order handler",
+            MaxResults = 5
+        });
+
+        Assert.Contains(results, r => r.FilePath.EndsWith("OrderHandler.cs", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task FullIndex_ClearsStaleVectorsBeforeReindexing()
+    {
+        for (var index = 0; index < 10; index++)
+        {
+            File.WriteAllText(
+                Path.Combine(_tempRepo, $"Old{index}.cs"),
+                $"public class Old{index} {{ public void PaymentListener() {{ }} }}");
+        }
+
+        await _indexer.IndexRepositoryAsync(MakeCommand(IndexingMode.Full));
+
+        foreach (var file in Directory.GetFiles(_tempRepo, "*.cs"))
+        {
+            File.Delete(file);
+        }
+
+        File.WriteAllText(Path.Combine(_tempRepo, "NewListener.cs"), "public class NewListener { public void PaymentListener() {} }");
+
+        await _indexer.IndexRepositoryAsync(MakeCommand(IndexingMode.Full));
+
+        var searchService = new SearchService(new LocalHashEmbeddingService(), _vectorStore, _store);
+        var results = await searchService.SearchAsync(new SearchCodeCommand
+        {
+            RepositoryName = "TestRepo",
+            BranchName = "main",
+            Query = "PaymentListener",
+            MaxResults = 1
+        });
+
+        Assert.Single(results);
+        Assert.Equal("NewListener.cs", results[0].FilePath);
+    }
+
+    [Fact]
     public async Task IncrementalIndex_IgnoresIgnoredFolders()
     {
         var binDir = Path.Combine(_tempRepo, "bin");

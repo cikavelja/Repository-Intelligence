@@ -200,6 +200,15 @@ public sealed class SqliteMetadataStore : IMetadataStore, IDisposable
         await tx.CommitAsync();
     }
 
+    public async Task<IReadOnlyList<CodeChunk>> GetAllChunksAsync(string repositoryName, string branchName, CancellationToken cancellationToken = default)
+    {
+        using var conn = await OpenConnectionAsync(cancellationToken);
+        var rows = await conn.QueryAsync<ChunkRow>(
+            "SELECT * FROM CodeChunks WHERE RepositoryName=@rn AND BranchName=@bn",
+            new { rn = repositoryName, bn = branchName });
+        return rows.Select(MapChunk).ToList();
+    }
+
     public async Task<IReadOnlyList<CodeChunk>> GetChunksByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default)
     {
         using var conn = await OpenConnectionAsync(cancellationToken);

@@ -46,6 +46,7 @@ public sealed class RepositoryIndexer : IRepositoryIndexer
 
         if (command.Mode == IndexingMode.Full)
         {
+            await _vectorSearchService.ClearRepositoryAsync(command.RepositoryName, command.BranchName, cancellationToken);
             await _metadataStore.ClearRepositoryAsync(command.RepositoryName, command.BranchName, cancellationToken);
         }
         else
